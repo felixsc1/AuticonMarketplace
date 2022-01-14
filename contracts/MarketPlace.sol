@@ -134,6 +134,7 @@ contract MarketPlace is Ownable {
         // Payment check in USD
         uint256 _valueInUSD = getTokenValue(msg.value);
         // todo: return the values in error message so that buyer knows how much to add
+        // see https://stackoverflow.com/questions/47129173/how-to-convert-uint-to-string-in-solidity
         require(_valueInUSD >= listing.priceUSD, "Insufficient payment");
 
         IERC721(listing.token).transferFrom(
