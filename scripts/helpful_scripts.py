@@ -10,7 +10,7 @@ LOCAL_BLOCKCHAIN_ENVIRONMENTS = NON_FORKED_LOCAL_BLOCKCHAIN_ENVIRONMENTS + [
 ]
 
 contract_to_mock = {
-    "eth_usd_price_feed": MockV3Aggregator,
+    "mock_price_feed": MockV3Aggregator,
 }
 
 
@@ -63,7 +63,7 @@ def get_contract(contract_name):
     return contract
 
 
-def deploy_mocks(decimals=18, initial_value=2000):
+def deploy_mocks(decimals=8, initial_value=2000):
     """
     Use this script if you want to deploy mocks to a testnet
     """

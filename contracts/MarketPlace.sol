@@ -29,30 +29,25 @@ contract MarketPlace is Ownable {
         uint256 priceUSD;
     }
 
+    constructor(address _priceFeed) {
+        nativePriceFeed = _priceFeed;
+    }
+
     /*
         Functions related to tokens for payment
         Mostly based on this tutorial project: https://github.com/felixsc1/defi-stake-yield-brownie
     */
 
-    function addAllowedToken(address _token) public onlyOwner {
-        allowedTokens.push(_token);
-    }
-
-    function setPriceFeedContract(address _token, address _priceFeed)
+    function addAllowedToken(address _token, address _priceFeed)
         public
         onlyOwner
     {
+        allowedTokens.push(_token);
         tokenPriceFeedMapping[_token] = _priceFeed;
     }
 
-    function setPriceFeedContract_nativecurrency(address _priceFeed)
-        public
-        onlyOwner
-    {
-        nativePriceFeed = _priceFeed;
-    }
-
-    function tokenIsAllowed(address _token) public returns (bool) {
+    // loop through mapping of allowed tokens, return true or false
+    function tokenIsAllowed(address _token) public view returns (bool) {
         for (
             uint256 allowedTokensIndex = 0;
             allowedTokensIndex < allowedTokens.length;
@@ -66,12 +61,14 @@ contract MarketPlace is Ownable {
     }
 
     // can be called to convert any token to USD
+    // when providing second _token argument, returns ERC20 price
     function getTokenValue(uint256 amount, address _token)
         public
         view
         returns (uint256)
     {
         // using chainlink price feeds, the addresses of which were set above
+        require(tokenIsAllowed(_token), "This token is not accepted");
         address priceFeedAddress = tokenPriceFeedMapping[_token];
         AggregatorV3Interface priceFeed = AggregatorV3Interface(
             priceFeedAddress
