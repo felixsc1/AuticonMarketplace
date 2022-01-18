@@ -63,7 +63,7 @@ def get_contract(contract_name):
     return contract
 
 
-def deploy_mocks(decimals=8, initial_value=2000):
+def deploy_mocks(decimals=8, initial_value=2000*10**8):
     """
     Use this script if you want to deploy mocks to a testnet
     """

@@ -87,8 +87,18 @@ contract MarketPlace is Ownable {
             nativePriceFeed
         );
         (, int256 price, , , ) = priceFeed.latestRoundData();
-        uint256 decimals = uint256(priceFeed.decimals());
+        uint256 decimals = uint256(priceFeed.decimals()); // needed in a calculation below
         return ((amount * uint256(price)) / (10**decimals));
+    }
+
+    // the oppsite: enter any USD value to get ETH (for buyer who wants to pay with ETH)
+    function USDtoETH(uint256 amount) public view returns (uint256) {
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(
+            nativePriceFeed
+        );
+        (, int256 price, , , ) = priceFeed.latestRoundData();
+        uint256 decimals = uint256(priceFeed.decimals()); // needed in a calculation below
+        return ((amount / uint256(price)) * (10**decimals));
     }
 
     /*
@@ -115,11 +125,12 @@ contract MarketPlace is Ownable {
         _listings[_listingId] = listing;
     }
 
+    function showOffer(uint256 listingId) public view returns (Listing memory) {
+        return _listings[listingId];
+    }
+
     // This function comes twice, here for payment in native currency
-    function buyListingItem(uint256 listingId, uint256 _amount)
-        external
-        payable
-    {
+    function buyOfferedItem(uint256 listingId) external payable {
         Listing storage listing = _listings[listingId];
 
         require(msg.sender != listing.seller, "Seller cannot be buyer");
@@ -128,11 +139,10 @@ contract MarketPlace is Ownable {
             "Listing is not active"
         );
 
-        // Payment check in USD
-        uint256 _valueInUSD = getTokenValue(msg.value);
+        uint256 _paymentInUSD = getTokenValue(msg.value);
         // todo: return the values in error message so that buyer knows how much to add
         // see https://stackoverflow.com/questions/47129173/how-to-convert-uint-to-string-in-solidity
-        require(_valueInUSD >= listing.priceUSD, "Insufficient payment");
+        require(_paymentInUSD >= listing.priceUSD, "Insufficient payment");
 
         IERC721(listing.token).transferFrom(
             address(this),
@@ -145,11 +155,10 @@ contract MarketPlace is Ownable {
     }
 
     // Same function when providing ERC20 _token address
-    function buyListingItem(
-        uint256 listingId,
-        address _token,
-        uint256 _amount
-    ) external payable {
+    function buyOfferedItem(uint256 listingId, address _token)
+        external
+        payable
+    {
         Listing storage listing = _listings[listingId];
 
         require(msg.sender != listing.seller, "Seller cannot be buyer");
@@ -159,9 +168,8 @@ contract MarketPlace is Ownable {
         );
         require(tokenIsAllowed(_token), "This token is not accepted");
 
-        // Payment check in USD
-        uint256 _valueInUSD = getTokenValue(_amount, _token);
-        require(_valueInUSD >= listing.priceUSD, "Insufficient payment");
+        // Convert listing price to desired token
+        uint256 _valueInToken = getTokenValue(listing.priceUSD, _token);
 
         IERC721(listing.token).transferFrom(
             address(this),
@@ -169,13 +177,28 @@ contract MarketPlace is Ownable {
             listing.tokenId
         );
 
-        // check, does buyer have to approve payment?
         IERC20(_token).transferFrom(
             msg.sender,
             payable(listing.seller),
-            _amount
+            _valueInToken
         );
 
         listing.status = ListingStatus.Sold;
+    }
+
+    function cancel(uint256 listingId) public {
+        Listing storage listing = _listings[listingId];
+        require(listing.seller == msg.sender, "You are not the seller");
+        require(
+            listing.status == ListingStatus.Active,
+            "Listing is not active"
+        );
+
+        IERC721(listing.token).transferFrom(
+            address(this),
+            msg.sender,
+            listing.tokenId
+        );
+        listing.status = ListingStatus.Cancelled;
     }
 }

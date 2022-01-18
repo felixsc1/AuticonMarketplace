@@ -51,3 +51,75 @@ def test_token_value(market_place_auticoin):
     returned_value = market_place.getTokenValue(
         Wei("50 ether"), auti_coin.address, {"from": account})
     assert returned_value == expected_value
+
+
+def test_can_create_new_offer(market_place_auticoin, example_nft):
+    """Have an NFT owner create a new offer on the market contract.
+        To check if it correctly shows up under the listings.
+    Args:
+        market_place_auticoin: deployed market contract
+        example_nft: deployed and minted NFT
+    """
+    # Arrange
+    account1 = get_account()
+    account2 = get_account(index=1)  # account2 is the NFT owner
+    market_place, auti_coin = market_place_auticoin
+    # Act
+    example_nft.approve(market_place.address, 1)
+    market_place.createNewOffer(
+        example_nft.address, 1, 100*10**18, {"from": account2})
+    # Assert
+    # 2nd entry of listings object is seller
+    assert market_place.showOffer(1)[1] == account2
+    # 3rd entry is token address
+    assert market_place.showOffer(1)[2] == example_nft.address
+    # non-owner of the NFT shouldnt be able to create offer
+    with pytest.raises(exceptions.VirtualMachineError):
+        market_place.createNewOffer(
+            example_nft.address, 1, 100*10**18, {"from": account1})
+
+
+def test_can_buy_offer_in_auticoin(market_place_auticoin, example_nft):
+    """
+    Seller creates example NFT offer for 1000$
+    Buyer buys the offer by paying with AutiCoin.
+
+    """
+    # Arrange
+    account1 = get_account()  # contract owner and NFT buyer
+    account2 = get_account(index=1)  # account2 is the NFT owner
+    price = 1000*10**18
+    market_place, auti_coin = market_place_auticoin
+    example_nft.approve(market_place.address, 1)
+    market_place.createNewOffer(
+        example_nft.address, 1, price, {"from": account2})
+    # Act
+    # Use getTokenValue to calculate the price
+    price_in_auticoin = market_place.getTokenValue(
+        price, auti_coin.address)
+    auti_coin.approve(market_place.address, price_in_auticoin)
+    market_place.buyOfferedItem(
+        1, auti_coin.address, {"from": account1})
+    assert example_nft.ownerOf(1) == account1
+
+
+def test_can_buy_offer_in_ethereum(market_place_auticoin, example_nft):
+    """
+    Seller creates example NFT offer for 1000$
+    Buyer buys the offer by paying with native currency.
+    needs separate test since transfer functions are different.
+    """
+    # Arrange
+    account1 = get_account()  # contract owner and NFT buyer
+    account2 = get_account(index=1)  # account2 is the NFT owner
+    price = 1000*10**18
+    market_place, auti_coin = market_place_auticoin
+    example_nft.approve(market_place.address, 1)
+    market_place.createNewOffer(
+        example_nft.address, 1, price, {"from": account2})
+    # Act
+    price_in_eth = market_place.USDtoETH(
+        price)
+    market_place.buyOfferedItem(
+        1, {"from": account1, "value": price_in_eth})
+    assert example_nft.ownerOf(1) == account1

@@ -1,6 +1,7 @@
 import pytest
 from scripts.deploy import deploy
 from scripts.helpful_scripts import get_account, get_contract
+from brownie import ExampleNFT
 
 
 @pytest.fixture
@@ -12,3 +13,11 @@ def market_place_auticoin():
     market_place.addAllowedToken(
         auti_coin.address, price_feed_address, {"from": account})
     return market_place, auti_coin
+
+
+@pytest.fixture
+def example_nft():
+    account = get_account(index=1)
+    example_nft = ExampleNFT.deploy({"from": account})
+    example_nft.mint({"from": account})
+    return example_nft
