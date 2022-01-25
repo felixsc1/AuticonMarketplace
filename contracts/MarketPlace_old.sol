@@ -7,14 +7,14 @@ import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/token/ERC20/IERC20.s
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/access/Ownable.sol";
 import "smartcontractkit/chainlink@1.0.1/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
-contract MarketPlace is Ownable {
+contract MarketPlace_old is Ownable {
     uint256 private _listingId;
-    uint256 public salesTax;
-    mapping(uint256 => Listing) public _listings;
-    // Functionality to allow tokens for payment, by providing their address, symbol, and price feed.
-    mapping(string => address) public tokenSymbolAddressMapping;
+    mapping(uint256 => Listing) private _listings;
+    // Functionality to allow tokens for payment, by providing their address and price feed.
+    address[] public allowedTokens;
     mapping(address => address) public tokenPriceFeedMapping;
     address public nativePriceFeed;
+    address public autiCoinAddress;
 
     enum ListingStatus {
         Active,
@@ -46,19 +46,12 @@ contract MarketPlace is Ownable {
         uint256 priceUSD
     );
 
-    event NewAllowedToken(string symbol, address tokenAddress);
-
     event Cancel(uint256 listingId, address seller);
 
     // AutiCoin is added in constructor
-    constructor(
-        address _nativePriceFeed,
-        address _autiCoin,
-        uint256 _salesTax
-    ) {
+    constructor(address _nativePriceFeed, address _autiCoin) {
         nativePriceFeed = _nativePriceFeed; // ETH or MATIC
-        tokenSymbolAddressMapping["AC"] = _autiCoin;
-        salesTax = _salesTax;
+        autiCoinAddress = _autiCoin;
     }
 
     /*
@@ -66,39 +59,38 @@ contract MarketPlace is Ownable {
         Mostly based on this tutorial project: https://github.com/felixsc1/defi-stake-yield-brownie
     */
 
-    function addAllowedToken(
-        string memory symbol,
-        address _token,
-        address _priceFeed
-    ) public onlyOwner {
-        tokenSymbolAddressMapping[symbol] = _token;
+    function addAllowedToken(address _token, address _priceFeed)
+        public
+        onlyOwner
+    {
+        allowedTokens.push(_token);
         tokenPriceFeedMapping[_token] = _priceFeed;
-
-        emit NewAllowedToken(symbol, _token);
     }
 
-    function tokenIsAllowed(string memory symbol) public view returns (bool) {
-        // since by default non-existant entry contains a 0.
-        return tokenSymbolAddressMapping[symbol] != address(0);
-    }
-
-    function setSalesTax(uint256 salesTaxPercentage) public onlyOwner {
-        // provide amount in percentage (e.g. 10 for 10%) to be subtracted from every payment and sent to owner.
-        salesTax = salesTaxPercentage;
+    // loop through mapping of allowed tokens, return true or false
+    function tokenIsAllowed(address _token) public view returns (bool) {
+        for (
+            uint256 allowedTokensIndex = 0;
+            allowedTokensIndex < allowedTokens.length;
+            allowedTokensIndex++
+        ) {
+            if (allowedTokens[allowedTokensIndex] == _token) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // can be called to convert any token to USD
     // when providing second _token argument, returns ERC20 price
-    function getTokenValue(uint256 amount, string memory symbol)
+    function getTokenValue(uint256 amount, address _token)
         public
         view
         returns (uint256)
     {
         // using chainlink price feeds, the addresses of which were set above
-        require(tokenIsAllowed(symbol), "This token is not accepted");
-        address priceFeedAddress = tokenPriceFeedMapping[
-            tokenSymbolAddressMapping[symbol]
-        ];
+        require(tokenIsAllowed(_token), "This token is not accepted");
+        address priceFeedAddress = tokenPriceFeedMapping[_token];
         AggregatorV3Interface priceFeed = AggregatorV3Interface(
             priceFeedAddress
         );
@@ -171,6 +163,8 @@ contract MarketPlace is Ownable {
         );
 
         uint256 _paymentInUSD = getTokenValue(msg.value);
+        // todo: return the values in error message so that buyer knows how much to add
+        // see https://stackoverflow.com/questions/47129173/how-to-convert-uint-to-string-in-solidity
         require(_paymentInUSD >= listing.priceUSD, "Insufficient payment");
 
         IERC721(listing.token).transferFrom(
@@ -178,16 +172,8 @@ contract MarketPlace is Ownable {
             msg.sender,
             listing.tokenId
         );
-
-        uint256 eth_price = USDtoETH(listing.priceUSD);
-
-        // if there is a sales tax, send that percentage of the price to the owner of this contract.
-        uint256 salesFee = (eth_price / 100) * salesTax;
-        payable(owner()).transfer(salesFee);
-
-        payable(listing.seller).transfer(eth_price - salesFee);
-        // reimbursing any excess payment.
-        payable(msg.sender).transfer(msg.value - eth_price);
+        // todo: how to only transfer listing.priceUSD? or return excess payment to sender...
+        payable(listing.seller).transfer(msg.value);
 
         listing.status = ListingStatus.Sold;
 
@@ -201,7 +187,10 @@ contract MarketPlace is Ownable {
     }
 
     // Same function when providing ERC20 _token address
-    function buyOfferedItem(uint256 listingId, string memory symbol) external {
+    function buyOfferedItem(uint256 listingId, address _token)
+        external
+        payable
+    {
         Listing storage listing = _listings[listingId];
 
         require(msg.sender != listing.seller, "Seller cannot be buyer");
@@ -211,21 +200,14 @@ contract MarketPlace is Ownable {
         );
 
         uint256 _valueInToken;
-        // solidity doesnt allow string comparisons, workaround is to use hash (see https://soliditytips.com/articles/compare-strings-solidity/):
-        if (
-            keccak256(abi.encodePacked(symbol)) ==
-            keccak256(abi.encodePacked("AC"))
-        ) {
+        if (_token == autiCoinAddress) {
             // here we set AutiCoin equal to USD. Could add a setter function to change this
             _valueInToken = listing.priceUSD;
         } else {
-            require(tokenIsAllowed(symbol), "This token is not accepted");
+            require(tokenIsAllowed(_token), "This token is not accepted");
             // Convert listing price to desired token
-            _valueInToken = getTokenValue(listing.priceUSD, symbol);
+            _valueInToken = getTokenValue(listing.priceUSD, _token);
         }
-
-        // in case there is a sales tax:
-        uint256 salesFee = (_valueInToken / 100) * salesTax;
 
         IERC721(listing.token).transferFrom(
             address(this),
@@ -233,27 +215,13 @@ contract MarketPlace is Ownable {
             listing.tokenId
         );
 
-        IERC20(tokenSymbolAddressMapping[symbol]).transferFrom(
+        IERC20(_token).transferFrom(
             msg.sender,
             payable(listing.seller),
-            _valueInToken - salesFee
-        );
-
-        IERC20(tokenSymbolAddressMapping[symbol]).transferFrom(
-            msg.sender,
-            payable(owner()),
-            salesFee
+            _valueInToken
         );
 
         listing.status = ListingStatus.Sold;
-
-        emit Sale(
-            listingId,
-            msg.sender,
-            listing.token,
-            listing.tokenId,
-            listing.priceUSD
-        );
     }
 
     function cancel(uint256 listingId) public {

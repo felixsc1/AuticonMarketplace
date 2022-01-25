@@ -11,6 +11,7 @@ LOCAL_BLOCKCHAIN_ENVIRONMENTS = NON_FORKED_LOCAL_BLOCKCHAIN_ENVIRONMENTS + [
 
 contract_to_mock = {
     "mock_price_feed": MockV3Aggregator,
+    "eth_usd_price_feed": MockV3Aggregator
 }
 
 
